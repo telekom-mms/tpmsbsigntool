@@ -1,0 +1,7 @@
+tpmsbsigntool (0.9.4-1) jammy; urgency=medium
+
+  * Forked sbsigntool 0.9.4-2ubuntu2
+  * Added openssl3 provider, propquery and store support
+
+ -- Richard Robert Reitz <richard-robert.reitz@t-systems.com>  Tue, 24 May 2022 20:29:10 +0200
+

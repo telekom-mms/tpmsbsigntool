@@ -1,0 +1,204 @@
+Description: Using OpenSSL store API
+Author: Richard Robert Reitz <richard-robert.reitz@t-systems.com>
+
+Using OpenSSL store API
+
+---
+
+--- tpmsbsigntool-0.9.4.orig/src/fileio.c
++++ tpmsbsigntool-0.9.4/src/fileio.c
+@@ -40,6 +40,7 @@
+ #include <openssl/pem.h>
+ #include <openssl/err.h>
+ #include <openssl/engine.h>
++#include <openssl/store.h>
+ 
+ #include <ccan/talloc/talloc.h>
+ #include <ccan/read_write_all/read_write_all.h>
+@@ -50,6 +50,12 @@
+ 
+ static int ui_read(UI *ui, UI_STRING *uis)
+ {
++	char *password_by_env = getenv("KBUILD_SIGN_PIN");
++	if (password_by_env) {
++		UI_set_result(ui, uis, password_by_env);
++		return 1;
++	}
++	
+ 	char password[128];
+ 
+ 	if (UI_get_string_type(uis) != UIT_PROMPT)
+@@ -99,22 +105,38 @@ EVP_PKEY *fileio_read_engine_key(const c
+ 
+ EVP_PKEY *fileio_read_pkey(const char *filename)
+ {
+-	return fileio_read_pkey_cb(filename, NULL);
+-}
+-
+-EVP_PKEY *fileio_read_pkey_cb(const char *filename, pem_password_cb *cb)
+-{
++	UI_METHOD *ui = NULL;
+ 	EVP_PKEY *key = NULL;
+-	BIO *bio;
++	OSSL_STORE_CTX *ctx = NULL;
++	OSSL_STORE_INFO *info = NULL;
++	
++	ui = UI_create_method("sbsigntools");
++	if (!ui) {
++		fprintf(stderr, "Failed to create UI method\n");
++		ERR_print_errors_fp(stderr);
++		goto out;
++	}
++	UI_method_set_reader(ui, ui_read);
+ 
+-	bio = BIO_new_file(filename, "r");
+-	if (!bio)
++	if ((ctx = OSSL_STORE_open(filename, ui, NULL, NULL, NULL)) == NULL) {
+ 		goto out;
++	}
+ 
+-	key = PEM_read_bio_PrivateKey(bio, NULL, cb, NULL);
++	while (!OSSL_STORE_eof(ctx)) {
++		if ((info = OSSL_STORE_load(ctx)) == NULL) {
++			goto out;
++		}
++		if ((key = OSSL_STORE_INFO_get1_PKEY(info)) == NULL) {
++			goto out;
++		}
++		// Only break on key gets loaded successfully
++		break;
++	}
+ 
+ out:
+-	BIO_free_all(bio);
++	if (ctx) {
++		OSSL_STORE_close(ctx);
++	}
+ 	if (!key) {
+ 		fprintf(stderr, "Can't load key from file '%s'\n", filename);
+ 		ERR_print_errors_fp(stderr);
+--- tpmsbsigntool-0.9.4.orig/src/fileio.h
++++ tpmsbsigntool-0.9.4/src/fileio.h
+@@ -38,7 +38,6 @@
+ #include <openssl/x509.h>
+ 
+ EVP_PKEY *fileio_read_pkey(const char *filename);
+-EVP_PKEY *fileio_read_pkey_cb(const char *filename, pem_password_cb *cb);
+ EVP_PKEY *fileio_read_engine_key(const char *engine, const char *filename);
+ X509 *fileio_read_cert(const char *filename);
+ 
+--- tpmsbsigntool-0.9.4.orig/src/tpmkmodsign.c
++++ tpmsbsigntool-0.9.4/src/tpmkmodsign.c
+@@ -244,27 +244,11 @@ int main(int argc, char **argv)
+ 	 * will point to.
+ 	 */
+ 	if (!strncmp(private_key_name, "pkcs11:", 7)) {
+-		ENGINE *e;
+-
+-		ENGINE_load_builtin_engines();
+-		drain_openssl_errors();
+-		e = ENGINE_by_id("pkcs11");
+-		ERR(!e, "Load PKCS#11 ENGINE");
+-		if (ENGINE_init(e))
+-			drain_openssl_errors();
+-		else
+-			ERR(1, "ENGINE_init");
+-		if (key_pass)
+-			ERR(!ENGINE_ctrl_cmd_string(e, "PIN", key_pass, 0), "Set PKCS#11 PIN");
+-		private_key = ENGINE_load_private_key(e, private_key_name, NULL,
+-						      NULL);
++		private_key = fileio_read_engine_key("pkcs11", private_key_name);
+ 		ERR(!private_key, "%s", private_key_name);
+ 	} else {
+-		b = BIO_new_file(private_key_name, "rb");
+-		ERR(!b, "%s", private_key_name);
+-		private_key = PEM_read_bio_PrivateKey(b, NULL, pem_pw_cb, NULL);
++		private_key = fileio_read_pkey(private_key_name);
+ 		ERR(!private_key, "%s", private_key_name);
+-		BIO_free(b);
+ 	}
+ 
+ 	b = BIO_new_file(x509_name, "rb");
+--- tpmsbsigntool-0.9.4.orig/src/tpmsbsign.c
++++ tpmsbsigntool-0.9.4/src/tpmsbsign.c
+@@ -77,6 +77,7 @@ static struct option options[] = {
+ 	{ "verbose", no_argument, NULL, 'v' },
+ 	{ "help", no_argument, NULL, 'h' },
+ 	{ "version", no_argument, NULL, 'V' },
++	{ "engine", required_argument, NULL, 'e'},
+ 	{ "provider", required_argument, NULL, 'P'},
+ 	{ "propquery", required_argument, NULL, 'Q'},
+ 	{ "addcert", required_argument, NULL, 'a'},
+@@ -89,6 +90,7 @@ static void usage(void)
+ 			"<efi-boot-image>\n"
+ 		"Sign an EFI boot image for use with secure boot.\n\n"
+ 		"Options:\n"
++		"\t--engine <eng>     use the specified engine to load the key\n"
+ 		"\t--provider <str>   set openssl provider(s)\n"
+ 		"\t                    (e.g.: --provider tpm2 --provider default)\n"
+ 		"\t--propquery <str>  set openssl query properties\n"
+@@ -155,31 +157,9 @@ static int add_intermediate_certs(PKCS7
+ 	return 0;
+ }
+ 
+-static const char *key_pass;
+-
+-static int pem_pw_cb(char *buf, int len, int w __attribute__((unused)),
+-		     void *v __attribute__((unused)))
+-{
+-	int pwlen;
+-
+-	if (!key_pass)
+-		return -1;
+-
+-	pwlen = strlen(key_pass);
+-	if (pwlen >= len)
+-		return -1;
+-
+-	strcpy(buf, key_pass);
+-
+-	/* If it's wrong, don't keep trying it. */
+-	key_pass = NULL;
+-
+-	return pwlen;
+-}
+-
+ int main(int argc, char **argv)
+ {
+-	const char *keyfilename, *certfilename, *addcertfilename;
++	const char *keyfilename, *certfilename, *addcertfilename, *engine;
+ 	struct sign_context *ctx;
+ 	uint8_t *buf, *tmp;
+ 	int rc, c, sigsize;
+@@ -190,8 +170,7 @@ int main(int argc, char **argv)
+ 	keyfilename = NULL;
+ 	certfilename = NULL;
+ 	addcertfilename = NULL;
+-
+-	key_pass = getenv("KBUILD_SIGN_PIN");
++	engine = NULL;
+ 
+ 	for (;;) {
+ 		int idx;
+@@ -231,6 +210,9 @@ int main(int argc, char **argv)
+ 		case 'h':
+ 			usage();
+ 			return EXIT_SUCCESS;
++		case 'e':
++			engine = optarg;
++			break;
+ 		case 'a':
+ 			addcertfilename = optarg;
+ 			break;
+@@ -279,7 +261,10 @@ int main(int argc, char **argv)
+ 	 * module isn't present).  In either case ignore the errors
+ 	 * (malloc will cause other failures out lower down */
+ 	ERR_clear_error();
+-	pkey = fileio_read_pkey_cb(keyfilename, pem_pw_cb);
++	if (engine)
++		pkey = fileio_read_engine_key(engine, keyfilename);
++	else
++		pkey = fileio_read_pkey(keyfilename);
+ 	if (!pkey)
+ 		return EXIT_FAILURE;
+ 

@@ -1,0 +1,11 @@
+no-error.patch
+sbsign_check_write_return.patch
+fix-efi-arch-detection.patch
+0001-sbsigntool-add-support-for-RISC-V-images.patch
+ubuntu-clear-image-before-use.patch
+OpenSSL3.patch
+renamed-to-tpm.patch
+kmodsign-tpm-support.patch
+sbsign-tpm-and-pin-support.patch
+ossl_store.patch
+

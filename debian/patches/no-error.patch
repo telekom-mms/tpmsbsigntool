@@ -1,0 +1,17 @@
+Description: Suppress errors
+
+Suppress errors
+
+---
+
+--- tpmsbsigntool-0.9.4.orig/src/Makefile.am
++++ tpmsbsigntool-0.9.4/src/Makefile.am
+@@ -2,7 +2,7 @@
+ bin_PROGRAMS = sbsign sbverify sbattach sbvarsign sbsiglist sbkeysync
+ 
+ coff_headers = coff/external.h coff/pe.h
+-AM_CFLAGS = -Wall -Wextra --std=gnu99
++AM_CFLAGS = -Wall -Wextra --std=gnu99 -Wno-error=deprecated-declarations -Werror=incompatible-pointer-types
+ 
+ common_SOURCES = idc.c idc.h image.c image.h fileio.c fileio.h \
+ 	efivars.h $(coff_headers)

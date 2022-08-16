@@ -1,0 +1,21 @@
+Author: Ben Hutchings <ben@decadent.org.uk>
+Date: Sun, 26 Jun 2016 22:56:18 +0200
+Description: Fix EFI architecture detection
+ Currently we use 'uname -m', which tells us the build architecture.
+ In a cross-building environment or compat environment, this is not the
+ same as the host architecture.  Use  AC_CANONICAL_HOST instead.
+
+Index: sbsigntool/configure.ac
+===================================================================
+--- sbsigntool.orig/configure.ac
++++ sbsigntool/configure.ac
+@@ -64,7 +64,8 @@ PKG_CHECK_MODULES(uuid, uuid,
+     AC_MSG_ERROR([libuuid (from the uuid package) is required]))
+ 
+ dnl gnu-efi headers require extra include dirs
+-EFI_ARCH=$(uname -m | sed 's/i.86/ia32/;s/arm.*/arm/')
++AC_CANONICAL_HOST
++EFI_ARCH=$(echo $host_cpu | sed 's/i.86/ia32/;s/arm.*/arm/')
+ AM_CONDITIONAL(TEST_BINARY_FORMAT, [ test "$EFI_ARCH" = "arm" -o "$EFI_ARCH" = "aarch64" ])
+ 
+ ##

@@ -1,0 +1,55 @@
+From 5690c5d12d384342d645bea8203efbf601503926 Mon Sep 17 00:00:00 2001
+From: Heinrich Schuchardt <heinrich.schuchardt@canonical.com>
+Date: Fri, 30 Jul 2021 15:26:14 +0200
+Subject: [PATCH 1/1] sbsigntool: add support for RISC-V images
+
+The UEFI 2.9 specification defines:
+
+    EFI_IMAGE_MACHINE_RISCV32 = 0x5032
+    EFI_IMAGE_MACHINE_RISCV64 = 0x5064
+
+The same values can be found in the PE-COFF specification. Cf.
+https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#machine-types
+
+    IMAGE_FILE_MACHINE_RISCV32 = 0x5032
+    IMAGE_FILE_MACHINE_RISCV64 = 0x5064
+
+Signed-off-by: Heinrich Schuchardt <heinrich.schuchardt@canonical.com>
+---
+ src/coff/pe.h | 2 ++
+ src/image.c   | 2 ++
+ 2 files changed, 4 insertions(+)
+
+diff --git a/src/coff/pe.h b/src/coff/pe.h
+index 0d1036e..a73a2c0 100644
+--- a/src/coff/pe.h
++++ b/src/coff/pe.h
+@@ -143,6 +143,8 @@
+ #define IMAGE_FILE_MACHINE_R10000            0x0168
+ #define IMAGE_FILE_MACHINE_R3000             0x0162
+ #define IMAGE_FILE_MACHINE_R4000             0x0166
++#define IMAGE_FILE_MACHINE_RISCV32           0x5032
++#define IMAGE_FILE_MACHINE_RISCV64           0x5064
+ #define IMAGE_FILE_MACHINE_SH3               0x01a2
+ #define IMAGE_FILE_MACHINE_SH3DSP            0x01a3
+ #define IMAGE_FILE_MACHINE_SH3E              0x01a4
+diff --git a/src/image.c b/src/image.c
+index 3ada37b..b14a30d 100644
+--- a/src/image.c
++++ b/src/image.c
+@@ -239,10 +239,12 @@ static int image_pecoff_parse(struct image *image)
+ 	switch (magic) {
+ 	case IMAGE_FILE_MACHINE_AMD64:
+ 	case IMAGE_FILE_MACHINE_AARCH64:
++	case IMAGE_FILE_MACHINE_RISCV64:
+ 		rc = image_pecoff_parse_64(image);
+ 		break;
+ 	case IMAGE_FILE_MACHINE_I386:
+ 	case IMAGE_FILE_MACHINE_THUMB:
++	case IMAGE_FILE_MACHINE_RISCV32:
+ 		rc = image_pecoff_parse_32(image);
+ 		break;
+ 	default:
+-- 
+2.31.1
+

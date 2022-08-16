@@ -1,0 +1,23 @@
+Source: tpmsbsigntool
+Section: utils
+Priority: optional
+Maintainer: Richard Robert Reitz <richard-robert.reitz@t-systems.com>
+Build-Depends: debhelper-compat (= 13),
+  gcc-multilib [amd64 i386 kfreebsd-amd64],
+  binutils-dev,
+  libssl-dev,
+  openssl,
+  pkg-config,
+  automake,
+  uuid-dev,
+  help2man,
+  gnu-efi
+Standards-Version: 4.5.1
+
+Package: tpmsbsigntool
+Architecture: any-amd64 any-i386 arm64 armhf any-riscv64
+Depends: ${shlibs:Depends}, ${misc:Depends}, tpm2-openssl
+Multi-Arch: foreign
+Description: Tools to sign UEFI binaries and drivers by the TPM
+ This package installs tools which can cryptographically sign EFI binaries and
+ drivers with the use of TPM.

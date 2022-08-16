@@ -1,0 +1,172 @@
+Description: Add TPM support to tpmsbsign
+Author: Richard Robert Reitz <richard-robert.reitz@t-systems.com>
+
+Added TPM support to tpmsbsign
+
+---
+
+--- tpmsbsigntool-0.9.4.orig/src/fileio.c
++++ tpmsbsigntool-0.9.4/src/fileio.c
+@@ -99,6 +99,11 @@ EVP_PKEY *fileio_read_engine_key(const c
+ 
+ EVP_PKEY *fileio_read_pkey(const char *filename)
+ {
++	return fileio_read_pkey_cb(filename, NULL);
++}
++
++EVP_PKEY *fileio_read_pkey_cb(const char *filename, pem_password_cb *cb)
++{
+ 	EVP_PKEY *key = NULL;
+ 	BIO *bio;
+ 
+@@ -106,7 +111,7 @@ EVP_PKEY *fileio_read_pkey(const char *f
+ 	if (!bio)
+ 		goto out;
+ 
+-	key = PEM_read_bio_PrivateKey(bio, NULL, NULL, NULL);
++	key = PEM_read_bio_PrivateKey(bio, NULL, cb, NULL);
+ 
+ out:
+ 	BIO_free_all(bio);
+--- tpmsbsigntool-0.9.4.orig/src/fileio.h
++++ tpmsbsigntool-0.9.4/src/fileio.h
+@@ -38,6 +38,7 @@
+ #include <openssl/x509.h>
+ 
+ EVP_PKEY *fileio_read_pkey(const char *filename);
++EVP_PKEY *fileio_read_pkey_cb(const char *filename, pem_password_cb *cb);
+ EVP_PKEY *fileio_read_engine_key(const char *engine, const char *filename);
+ X509 *fileio_read_cert(const char *filename);
+ 
+--- tpmsbsigntool-0.9.4.orig/src/tpmsbsign.c
++++ tpmsbsigntool-0.9.4/src/tpmsbsign.c
+@@ -51,6 +51,7 @@
+ #include <openssl/asn1t.h>
+ #include <openssl/bio.h>
+ #include <openssl/x509.h>
++#include <openssl/provider.h>
+ 
+ #include <ccan/talloc/talloc.h>
+ 
+@@ -76,7 +77,8 @@ static struct option options[] = {
+ 	{ "verbose", no_argument, NULL, 'v' },
+ 	{ "help", no_argument, NULL, 'h' },
+ 	{ "version", no_argument, NULL, 'V' },
+-	{ "engine", required_argument, NULL, 'e'},
++	{ "provider", required_argument, NULL, 'P'},
++	{ "propquery", required_argument, NULL, 'Q'},
+ 	{ "addcert", required_argument, NULL, 'a'},
+ 	{ NULL, 0, NULL, 0 },
+ };
+@@ -87,7 +89,10 @@ static void usage(void)
+ 			"<efi-boot-image>\n"
+ 		"Sign an EFI boot image for use with secure boot.\n\n"
+ 		"Options:\n"
+-		"\t--engine <eng>     use the specified engine to load the key\n"
++		"\t--provider <str>   set openssl provider(s)\n"
++		"\t                    (e.g.: --provider tpm2 --provider default)\n"
++		"\t--propquery <str>  set openssl query properties\n"
++		"\t                    (e.g.: --propquery ?provider=tpm2,tpm2.digest!=yes)\n"
+ 		"\t--key <keyfile>    signing key (PEM-encoded RSA "
+ 						"private key)\n"
+ 		"\t--cert <certfile>  certificate (x509 certificate)\n"
+@@ -150,9 +155,31 @@ static int add_intermediate_certs(PKCS7
+ 	return 0;
+ }
+ 
++static const char *key_pass;
++
++static int pem_pw_cb(char *buf, int len, int w __attribute__((unused)),
++		     void *v __attribute__((unused)))
++{
++	int pwlen;
++
++	if (!key_pass)
++		return -1;
++
++	pwlen = strlen(key_pass);
++	if (pwlen >= len)
++		return -1;
++
++	strcpy(buf, key_pass);
++
++	/* If it's wrong, don't keep trying it. */
++	key_pass = NULL;
++
++	return pwlen;
++}
++
+ int main(int argc, char **argv)
+ {
+-	const char *keyfilename, *certfilename, *addcertfilename, *engine;
++	const char *keyfilename, *certfilename, *addcertfilename;
+ 	struct sign_context *ctx;
+ 	uint8_t *buf, *tmp;
+ 	int rc, c, sigsize;
+@@ -163,15 +190,26 @@ int main(int argc, char **argv)
+ 	keyfilename = NULL;
+ 	certfilename = NULL;
+ 	addcertfilename = NULL;
+-	engine = NULL;
++
++	key_pass = getenv("KBUILD_SIGN_PIN");
+ 
+ 	for (;;) {
+ 		int idx;
+-		c = getopt_long(argc, argv, "o:c:k:dvVhe:a:", options, &idx);
++		c = getopt_long(argc, argv, "P:Q:o:c:k:dvVhe:a:", options, &idx);
+ 		if (c == -1)
+ 			break;
+ 
+ 		switch (c) {
++		case 'P': if (OSSL_PROVIDER_load(NULL, optarg) == NULL) {
++				fprintf(stderr, "Failed to set openssl provider %s\n", optarg);
++				exit(1);
++			}
++			break;
++		case 'Q': if (EVP_set_default_properties(NULL, optarg) != 1) {
++				fprintf(stderr, "Failed to set openssl properties %s\n", optarg);
++				exit(1);
++			}
++			break;
+ 		case 'o':
+ 			ctx->outfilename = talloc_strdup(ctx, optarg);
+ 			break;
+@@ -193,9 +231,6 @@ int main(int argc, char **argv)
+ 		case 'h':
+ 			usage();
+ 			return EXIT_SUCCESS;
+-		case 'e':
+-			engine = optarg;
+-			break;
+ 		case 'a':
+ 			addcertfilename = optarg;
+ 			break;
+@@ -244,10 +279,7 @@ int main(int argc, char **argv)
+ 	 * module isn't present).  In either case ignore the errors
+ 	 * (malloc will cause other failures out lower down */
+ 	ERR_clear_error();
+-	if (engine)
+-		pkey = fileio_read_engine_key(engine, keyfilename);
+-	else
+-		pkey = fileio_read_pkey(keyfilename);
++	pkey = fileio_read_pkey_cb(keyfilename, pem_pw_cb);
+ 	if (!pkey)
+ 		return EXIT_FAILURE;
+ 
+@@ -292,12 +324,12 @@ int main(int argc, char **argv)
+ 
+ 		for (i = 0; !image_get_signature(ctx->image, i, &buf, &len); i++)
+ 			;
+-		image_write_detached(ctx->image, i - 1, ctx->outfilename);
++		rc = image_write_detached(ctx->image, i - 1, ctx->outfilename);
+ 	} else
+-		image_write(ctx->image, ctx->outfilename);
++		rc = image_write(ctx->image, ctx->outfilename);
+ 
+ 	talloc_free(ctx);
+ 
+-	return EXIT_SUCCESS;
++	return (rc == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
+ }
+ 

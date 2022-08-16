@@ -1,0 +1,17 @@
+Description: clear image before use
+ We rely on the image being clear as we will attempt to free
+ cirtain elements before reuse.  Switch to a zeroing allocate.
+Author: Andy Whitcroft <apw@ubuntu.com>
+Last-Update: 2016-05-09
+
+--- a/src/image.c
++++ b/src/image.c
+@@ -462,7 +462,7 @@
+ 	struct image *image;
+ 	int rc;
+ 
+-	image = talloc(NULL, struct image);
++	image = talloc_zero(NULL, struct image);
+ 	if (!image) {
+ 		perror("talloc(image)");
+ 		return NULL;

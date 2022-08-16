@@ -1,0 +1,37 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+include /usr/share/dpkg/architecture.mk
+include /usr/share/dpkg/pkg-info.mk
+
+# Uncomment this to turn on verbose mode.
+export DH_VERBOSE=1
+
+%:
+	dh $@ --with autoreconf
+
+# Upstream tests are specific to x86, and require gcc-multilib which
+# is only available on some x86 architectures
+override_dh_auto_test:
+ifneq ($(filter amd64 i386 kfreebsd-amd64,$(DEB_HOST_ARCH)),)
+	dh_auto_test
+endif
+
+override_dh_clean:
+	dh_clean
+	rm -f tests/test.elf
+
+DOWNLOAD_VERSION?=$(DEB_VERSION_UPSTREAM)
+get-orig-source:
+	# Reproducible tarball builder.
+	rm -rf debian/sbsigntool-*
+	git clone -b v$(DOWNLOAD_VERSION) https://git.kernel.org/pub/scm/linux/kernel/git/jejb/sbsigntools.git debian/sbsigntool-$(DOWNLOAD_VERSION)
+	# Running the submodule magic right up to the automagic
+	cd debian/sbsigntool-$(DOWNLOAD_VERSION) && awk '/automagic/ { exit } {print}' autogen.sh | sh -x
+	cd debian/ && tar --sort=name \
+		--mtime="@`git -C sbsigntool-$(DOWNLOAD_VERSION) log -1 --pretty=%ct`" \
+		--owner=0 --group=0 --numeric-owner \
+		--pax-option=exthdr.name=%d/PaxHeaders/%f,delete=atime,delete=ctime \
+		--exclude=.git --exclude=lib/ccan.git \
+		-c  sbsigntool-$(DOWNLOAD_VERSION) | xz > ../../sbsigntool_$(DOWNLOAD_VERSION).orig.tar.xz
+	rm -rf debian/sbsigntool-$(DOWNLOAD_VERSION)

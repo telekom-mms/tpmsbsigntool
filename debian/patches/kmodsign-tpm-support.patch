@@ -1,0 +1,99 @@
+Description: Add TPM support to tpmkmodsign
+Author: Richard Robert Reitz <richard-robert.reitz@t-systems.com>
+
+Added TPM support to tpmkmodsign
+
+---
+
+--- tpmsbsigntool-0.9.4.orig/src/tpmkmodsign.c
++++ tpmsbsigntool-0.9.4/src/tpmkmodsign.c
+@@ -24,6 +24,7 @@
+ #include <openssl/bio.h>
+ #include <openssl/evp.h>
+ #include <openssl/pem.h>
++#include <openssl/provider.h>
+ #include <openssl/err.h>
+ #include <openssl/engine.h>
+ 
+@@ -49,6 +49,8 @@
+ #include <openssl/pkcs7.h>
+ #endif
+ 
++#include "fileio.h"
++
+ struct module_signature {
+ 	uint8_t		algo;		/* Public-key crypto algorithm [0] */
+ 	uint8_t		hash;		/* Digest algorithm [0] */
+@@ -64,9 +65,13 @@ static char magic_number[] = "~Module si
+ 
+ static void usage(void)
+ {
+-	printf("Usage: tpmkmodsign [-dpkD] <hash algo> <key> <x509> <module> [<dest>]\n"
++	printf("Usage: tpmkmodsign [options] <hash algo> <key> <x509> <module> [<dest>]\n"
+ 		"Sign a kernel module image for use with an enforcing kernel.\n\n"
+ 		"Options:\n"
++		"\t-P <str>     set openssl provider(s)\n"
++		"\t             (e.g.: -P tpm2 -P default)\n"
++		"\t-Q <str>     set openssl query properties\n"
++		"\t             (e.g.: -Q ?provider=tpm2,tpm2.digest!=yes)\n"
+ 		"\t-p           save a copy of the p7s signature (.p7s)\n"
+ 		"\t-d           produce a detached signature file (.p7s) only\n"
+ 		"\t-D           produce a full detached signature block\n"
+@@ -125,28 +127,6 @@ static void drain_openssl_errors(void)
+ 		}					\
+ 	} while(0)
+ 
+-static const char *key_pass;
+-
+-static int pem_pw_cb(char *buf, int len, int w __attribute__((unused)),
+-		     void *v __attribute__((unused)))
+-{
+-	int pwlen;
+-
+-	if (!key_pass)
+-		return -1;
+-
+-	pwlen = strlen(key_pass);
+-	if (pwlen >= len)
+-		return -1;
+-
+-	strcpy(buf, key_pass);
+-
+-	/* If it's wrong, don't keep trying it. */
+-	key_pass = NULL;
+-
+-	return pwlen;
+-}
+-
+ static struct option options[] = {
+ 	{ "version", no_argument, NULL, 'V' },
+ 	{ "help", no_argument, NULL, 'h' },
+@@ -179,8 +159,6 @@ int main(int argc, char **argv)
+ 	ERR_load_crypto_strings();
+ 	ERR_clear_error();
+ 
+-	key_pass = getenv("KBUILD_SIGN_PIN");
+-
+ #ifndef USE_PKCS7
+ 	use_signed_attrs = CMS_NOATTR;
+ #else
+@@ -184,8 +189,18 @@ int main(int argc, char **argv)
+ 
+ 	do {
+ 		int idx;
+-		opt = getopt_long(argc, argv, "dpkDhV", options, &idx);
++		opt = getopt_long(argc, argv, "P:Q:dpkDhV", options, &idx);
+ 		switch (opt) {
++		case 'P': if (OSSL_PROVIDER_load(NULL, optarg) == NULL) {
++				fprintf(stderr, "Failed to set openssl provider %s\n", optarg);
++				exit(1);
++			}
++			break;
++		case 'Q': if (EVP_set_default_properties(NULL, optarg) != 1) {
++				fprintf(stderr, "Failed to set openssl properties %s\n", optarg);
++				exit(1);
++			}
++			break;
+ 		case 'p': save_sig = true; break;
+ 		case 'd': sign_only = true; save_sig = true; break;
+ 		case 'D': detached = true; break;
