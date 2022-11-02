@@ -8,4 +8,4 @@ renamed-to-tpm.patch
 kmodsign-tpm-support.patch
 sbsign-tpm-and-pin-support.patch
 ossl_store.patch
-
+tpmsbsign_hash_only.patch

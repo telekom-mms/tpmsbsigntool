@@ -1,0 +1,112 @@
+Description: <short summary of the patch>
+ TODO: Put a short summary on the line above and replace this paragraph
+ with a longer explanation of this change. Complete the meta-information
+ with other relevant fields (see below for details). To make it easier, the
+ information below has been extracted from the changelog. Adjust it or drop
+ it.
+ .
+ tpmsbsigntool (0.9.4-1) jammy; urgency=medium
+ .
+   * Forked sbsigntool 0.9.4-2ubuntu2
+   * Added openssl3 provider, propquery and store support
+Author: Richard Robert Reitz <richard-robert.reitz@t-systems.com>
+
+---
+The information above should follow the Patch Tagging Guidelines, please
+checkout http://dep.debian.net/deps/dep3/ to learn about the format. Here
+are templates for supplementary fields that you might want to add:
+
+Origin: <vendor|upstream|other>, <url of original patch>
+Bug: <url in upstream bugtracker>
+Bug-Debian: https://bugs.debian.org/<bugnumber>
+Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
+Forwarded: <no|not-needed|url proving that it has been forwarded>
+Reviewed-By: <name and email of someone who approved the patch>
+Last-Update: 2022-11-02
+
+--- tpmsbsigntool-0.9.4.orig/src/idc.h
++++ tpmsbsigntool-0.9.4/src/idc.h
+@@ -42,5 +42,7 @@ int IDC_set(PKCS7 *p7, PKCS7_SIGNER_INFO
+ struct idc *IDC_get(PKCS7 *p7, BIO *bio);
+ int IDC_check_hash(struct idc *idc, struct image *image);
+ 
++const char *sha256_str(const uint8_t *hash);
++
+ #endif /* IDC_H */
+ 
+--- tpmsbsigntool-0.9.4.orig/src/tpmsbsign.c
++++ tpmsbsigntool-0.9.4/src/tpmsbsign.c
+@@ -76,6 +76,7 @@ static struct option options[] = {
+ 	{ "detached", no_argument, NULL, 'd' },
+ 	{ "verbose", no_argument, NULL, 'v' },
+ 	{ "help", no_argument, NULL, 'h' },
++	{ "hash-only", no_argument, NULL, 'H' },
+ 	{ "version", no_argument, NULL, 'V' },
+ 	{ "engine", required_argument, NULL, 'e'},
+ 	{ "provider", required_argument, NULL, 'P'},
+@@ -105,6 +106,7 @@ static void usage(void)
+ 		"\t                    (default <efi-boot-image>.signed,\n"
+ 		"\t                    or <efi-boot-image>.pk7 for detached\n"
+ 		"\t                    signatures)\n",
++		"\t--hash-only        Print the PE hash\n",
+ 		toolname);
+ }
+ 
+@@ -162,7 +164,7 @@ int main(int argc, char **argv)
+ 	const char *keyfilename, *certfilename, *addcertfilename, *engine;
+ 	struct sign_context *ctx;
+ 	uint8_t *buf, *tmp;
+-	int rc, c, sigsize;
++	int rc, c, sigsize, hash_only = 0;
+ 	EVP_PKEY *pkey;
+ 
+ 	ctx = talloc_zero(NULL, struct sign_context);
+@@ -174,7 +176,7 @@ int main(int argc, char **argv)
+ 
+ 	for (;;) {
+ 		int idx;
+-		c = getopt_long(argc, argv, "P:Q:o:c:k:dvVhe:a:", options, &idx);
++		c = getopt_long(argc, argv, "P:Q:o:c:k:dvVhe:a:H", options, &idx);
+ 		if (c == -1)
+ 			break;
+ 
+@@ -216,6 +218,9 @@ int main(int argc, char **argv)
+ 		case 'a':
+ 			addcertfilename = optarg;
+ 			break;
++		case 'H':
++			hash_only = 1;
++			break;
+ 		}
+ 	}
+ 
+@@ -225,6 +230,18 @@ int main(int argc, char **argv)
+ 	}
+ 
+ 	ctx->infilename = argv[optind];
++	
++	ctx->image = image_load(ctx->infilename);
++	if (!ctx->image)
++		return EXIT_FAILURE;
++
++	if (hash_only) {
++		unsigned char sha[SHA256_DIGEST_LENGTH];
++		image_hash_sha256(ctx->image, sha);
++		printf("%s\n", sha256_str(sha));
++		return EXIT_SUCCESS;
++	}
++
+ 	if (!ctx->outfilename)
+ 		set_default_outfilename(ctx);
+ 
+@@ -241,10 +258,6 @@ int main(int argc, char **argv)
+ 		return EXIT_FAILURE;
+ 	}
+ 
+-	ctx->image = image_load(ctx->infilename);
+-	if (!ctx->image)
+-		return EXIT_FAILURE;
+-
+ 	talloc_steal(ctx, ctx->image);
+ 
+ 	ERR_load_crypto_strings();
