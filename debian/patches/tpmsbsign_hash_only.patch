@@ -45,6 +45,7 @@ Last-Update: 2022-11-02
  	{ "engine", required_argument, NULL, 'e'},
  	{ "provider", required_argument, NULL, 'P'},
 @@ -105,7 +105,8 @@ static void usage(void)
+ 		"\t--output <file>    write signed data to <file>\n"
  		"\t                    (default <efi-boot-image>.signed,\n"
  		"\t                    or <efi-boot-image>.pk7 for detached\n"
 - 		"\t                    signatures)\n",
