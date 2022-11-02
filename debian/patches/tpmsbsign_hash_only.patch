@@ -47,7 +47,8 @@ Last-Update: 2022-11-02
 @@ -105,6 +106,7 @@ static void usage(void)
  		"\t                    (default <efi-boot-image>.signed,\n"
  		"\t                    or <efi-boot-image>.pk7 for detached\n"
- 		"\t                    signatures)\n",
+- 		"\t                    signatures)\n",
++ 		"\t                    signatures)\n"
 +		"\t--hash-only        Print the PE hash\n",
  		toolname);
  }
