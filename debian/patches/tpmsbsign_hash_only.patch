@@ -48,8 +48,8 @@ Last-Update: 2022-11-02
  		"\t--output <file>    write signed data to <file>\n"
  		"\t                    (default <efi-boot-image>.signed,\n"
  		"\t                    or <efi-boot-image>.pk7 for detached\n"
-- 		"\t                    signatures)\n",
-+ 		"\t                    signatures)\n"
+-		"\t                    signatures)\n",
++		"\t                    signatures)\n"
 +		"\t--hash-only        Print the PE hash\n",
  		toolname);
  }
