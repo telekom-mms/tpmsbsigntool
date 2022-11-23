@@ -1,14 +1,14 @@
-Description: <short summary of the patch>
- TODO: Put a short summary on the line above and replace this paragraph
- with a longer explanation of this change. Complete the meta-information
- with other relevant fields (see below for details). To make it easier, the
- information below has been extracted from the changelog. Adjust it or drop
- it.
- .
- tpmsbsigntool (0.9.4-1) jammy; urgency=medium
- .
-   * Forked sbsigntool 0.9.4-2ubuntu2
-   * Added openssl3 provider, propquery and store support
+Description: Add hash-only patch provided by Trammell Hudson
+For predicting the TPM PCRs it is necessary to compute the
+PE hash as defined by Microsoft's complicated 15-step process.
+Since sbsign already has the logic to walk the executable
+and generate this sha256 value, this patch adds an option
+to print the hash by itself.
+
+It provides the correct hashes only for signed PE, unsigned PE hashes
+seems to be calculated wrong. But in our case we only need the correct
+hash value for signed PE only.
+
 Author: Richard Robert Reitz <richard-robert.reitz@t-systems.com>
 
 ---
@@ -16,12 +16,8 @@ The information above should follow the Patch Tagging Guidelines, please
 checkout http://dep.debian.net/deps/dep3/ to learn about the format. Here
 are templates for supplementary fields that you might want to add:
 
-Origin: <vendor|upstream|other>, <url of original patch>
-Bug: <url in upstream bugtracker>
-Bug-Debian: https://bugs.debian.org/<bugnumber>
-Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
-Forwarded: <no|not-needed|url proving that it has been forwarded>
-Reviewed-By: <name and email of someone who approved the patch>
+Origin: other, https://groups.io/g/sbsigntools/message/42
+Reviewed-By: Richard Robert Reitz <richard-robert.reitz@t-systems.com>
 Last-Update: 2022-11-02
 
 --- tpmsbsigntool-0.9.4.orig/src/idc.h
