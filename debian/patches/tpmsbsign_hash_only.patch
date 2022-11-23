@@ -9,8 +9,6 @@ It provides the correct hashes only for signed PE, unsigned PE hashes
 seems to be calculated wrong. But in our case we only need the correct
 hash value for signed PE only.
 
-Author: Richard Robert Reitz <richard-robert.reitz@t-systems.com>
-
 ---
 The information above should follow the Patch Tagging Guidelines, please
 checkout http://dep.debian.net/deps/dep3/ to learn about the format. Here
@@ -46,7 +44,7 @@ Last-Update: 2022-11-02
  		"\t                    or <efi-boot-image>.pk7 for detached\n"
 -		"\t                    signatures)\n",
 +		"\t                    signatures)\n"
-+		"\t--hash-only        print the PE hash\n",
++		"\t--hash-only        print the PE hash of already signed binaries\n",
  		toolname);
  }
  
