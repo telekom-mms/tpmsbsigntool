@@ -11,4 +11,5 @@ RUN set -eu ; \
   pkg-config \
   uuid-dev \
   help2man \
-  gnu-efi
+  gnu-efi \
+  libssl-dev
