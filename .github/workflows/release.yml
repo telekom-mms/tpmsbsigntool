@@ -33,8 +33,9 @@ jobs:
           echo "Result: $(ls *.deb)"
           sha512sum *.deb > checksums.txt
           cp *.deb checksums.txt ${{ github.workspace }}/
+          cd ${{ github.workspace }}
           gh release delete $TAG || true
-          gh release create $TAG --generate-notes ../*.deb ../checksums.txt
+          gh release create $TAG --generate-notes *.deb checksums.txt
         env:
           GH_TOKEN: ${{ github.token }}
 
