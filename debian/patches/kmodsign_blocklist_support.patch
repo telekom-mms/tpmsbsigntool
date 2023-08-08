@@ -29,7 +29,7 @@ Last-Update: 2023-08-08
 +case "$1" in
 +  'configure')
 +    install -d -m 0600 /var/lib/tpmsbsigntool
-+    BLOCKLIST=/var/lib/tpmsbsigntool/blocklist.conf
++    BLOCKLIST=/var/lib/tpmsbsigntool/tpmkmodsign_blocklist.conf
 +    if [ ! -f "${BLOCKLIST}" ]; then
 +      chattr -i "${BLOCKLIST}" 2> /dev/null > /dev/null || true
 +      rm "${BLOCKLIST}" 2> /dev/null > /dev/null || true
@@ -59,7 +59,7 @@ Last-Update: 2023-08-08
  	{ NULL, 0, NULL, 0 },
  };
  
-+static char blocklist_path[] = "/var/lib/tpmsbsigntool/blocklist.conf";
++static char blocklist_path[] = "/var/lib/tpmsbsigntool/tpmkmodsign_blocklist.conf";
 +
 +static bool iswhitespace(const unsigned char c)
 +{
