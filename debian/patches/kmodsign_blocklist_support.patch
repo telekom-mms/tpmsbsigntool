@@ -1,0 +1,139 @@
+Add blocklist support to tpmkmodsign
+
+---
+The information above should follow the Patch Tagging Guidelines, please
+checkout http://dep.debian.net/deps/dep3/ to learn about the format. Here
+are templates for supplementary fields that you might want to add:
+
+Reviewed-By: Richard Robert Reitz <richard-robert.reitz@telekom.de>
+Last-Update: 2023-08-08
+
+--- tpmsbsigntool-0.9.4.orig/debian/changelog	2023-08-08 21:18:37.613975224 +0200
++++ tpmsbsigntool-0.9.4/debian/changelog	2023-08-08 21:25:12.738804080 +0200
+@@ -1,3 +1,9 @@
++tpmsbsigntool (0.9.4-2-1) jammy; urgency=medium
++
++  * Added blocklist support for kernel modules.
++
++ -- Richard Robert Reitz <richard-robert.reitz@telekom.de>  Tue, 08 Aug 2023 21:15:34 +0200
++
+ tpmsbsigntool (0.9.4-2) jammy; urgency=medium
+ 
+   * Added hash only function for signed PE binaries.
+
+--- tpmsbsigntool-0.9.4.orig/debian/postinst	1970-01-01 01:00:00.000000000 +0100
++++ tpmsbsigntool-0.9.4/debian/postinst	2023-08-08 21:25:04.578755060 +0200
+@@ -0,0 +1,20 @@
++#!/bin/sh -e
++
++case "$1" in
++  'configure')
++    install -d -m 0600 /var/lib/tpmsbsigntool
++    BLOCKLIST=/var/lib/tpmsbsigntool/blocklist.conf
++    if [ ! -f "${BLOCKLIST}" ]; then
++      chattr -i "${BLOCKLIST}" 2> /dev/null > /dev/null || true
++      rm "${BLOCKLIST}" 2> /dev/null > /dev/null || true
++      echo "# List module names which shouldn't be signed, one per line" > "${BLOCKLIST}"
++      echo "# Example:" >> "${BLOCKLIST}"
++      echo "# v4l2loopback" >> "${BLOCKLIST}"
++      echo >> "${BLOCKLIST}"
++      chmod 640 "${BLOCKLIST}"
++      chattr +i "${BLOCKLIST}"
++    fi
++    ;;
++esac
++
++#DEBHELPER#
+
+--- tpmsbsigntool-0.9.4.orig/src/tpmkmodsign.c	2023-08-08 21:19:19.000000000 +0200
++++ tpmsbsigntool-0.9.4/src/tpmkmodsign.c	2023-08-08 21:26:55.215479566 +0200
+@@ -19,6 +19,7 @@
+ #include <string.h>
+ #include <getopt.h>
+ #include <err.h>
++#include <libgen.h>
+ #include <arpa/inet.h>
+ #include <openssl/opensslv.h>
+ #include <openssl/bio.h>
+@@ -133,6 +134,70 @@
+ 	{ NULL, 0, NULL, 0 },
+ };
+ 
++static char blocklist_path[] = "/var/lib/tpmsbsigntool/blocklist.conf";
++
++static bool iswhitespace(const unsigned char c)
++{
++  if (c == 0x20 || c == 0x09 || c == 0x0a || c == 0x0b || c == 0x0c || c == 0x0d)
++    return true;
++  else
++    return false;
++}
++
++static bool is_blocklisted(const char *module_name)
++{
++  char *module_name_dup = strdup(module_name);
++  const char *module_base_file = basename(module_name_dup);
++  char *dot = strchr(module_base_file, '.');
++  if (dot == NULL) {
++		fprintf(stderr, "Can't find extension in module name %s\n", module_name);
++    free(module_name_dup);
++		exit(3);
++  }
++  size_t sub_string_length = dot - module_base_file;
++  if (sub_string_length > strlen(module_base_file)) {
++    sub_string_length = strlen(module_base_file);
++  }
++  char *module = calloc(1, strlen(module_base_file)+1);
++  memcpy(module, module_base_file, sub_string_length);
++  free(module_name_dup);
++  FILE *stream = fopen(blocklist_path, "r");
++  if (stream == NULL) {
++    free(module);
++    return false;
++  }
++  char *line = NULL;
++  char *search_in = NULL;
++  size_t len = 0;
++  ssize_t nread = 0;
++  bool found_in_blocklist = false;
++  while ((nread = getline(&line, &len, stream)) != -1) {
++    search_in = line;
++    for (ssize_t i=0;i<nread;i++) {
++      if (iswhitespace(line[i])) {
++        search_in++;
++      } else {
++        break;
++      }
++    }
++    size_t search_len = nread - (ssize_t)(search_in - line);
++    if ((search_len > 0) && (search_in[0] == '#')) {
++      continue;
++    }
++    if (search_len>=strlen(module)) {
++      if (strncmp(module, search_in, strlen(module)) == 0) {
++        if ((search_len == strlen(module)) || ((search_len > strlen(module)) && (iswhitespace(search_in[strlen(module)])))) {
++          found_in_blocklist = true;
++        }
++      }
++    }
++  }
++  free(line);
++  fclose(stream);
++  free(module);
++  return found_in_blocklist;
++}
++
+ int main(int argc, char **argv)
+ {
+ 	struct module_signature sig_info = { .id_type = PKEY_ID_PKCS7 };
+@@ -201,6 +266,10 @@
+ 	private_key_name = argv[1];
+ 	x509_name = argv[2];
+ 	module_name = argv[3];
++	if (is_blocklisted(module_name)) {
++		fprintf(stderr, "Module %s is blocklisted, see %s\n", module_name, blocklist_path);
++		exit(3);
++	}
+ 	if (argc == 5) {
+ 		dest_name = argv[4];
+ 		replace_orig = false;
