@@ -33,7 +33,7 @@ Last-Update: 2023-08-08
 +    if [ ! -f "${BLOCKLIST}" ]; then
 +      chattr -i "${BLOCKLIST}" 2> /dev/null > /dev/null || true
 +      rm "${BLOCKLIST}" 2> /dev/null > /dev/null || true
-+      echo "# List module names which shouldn't be signed, one per line" > "${BLOCKLIST}"
++      echo "# List module names which shouldn't be signed, one per line, in ASCII format" > "${BLOCKLIST}"
 +      echo "# Example:" >> "${BLOCKLIST}"
 +      echo "# v4l2loopback" >> "${BLOCKLIST}"
 +      echo >> "${BLOCKLIST}"
